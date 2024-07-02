@@ -1,3 +1,5 @@
+# Author: Tim Sainburg
+
 from scipy.signal import butter, lfilter
 import numpy as np
 import librosa

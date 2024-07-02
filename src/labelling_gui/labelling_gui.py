@@ -1,3 +1,7 @@
+# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>
+
+# License: BSD (3-clause)
+
 import tkinter as Tk
 from tkinter import messagebox
 import tkinter.filedialog as fd

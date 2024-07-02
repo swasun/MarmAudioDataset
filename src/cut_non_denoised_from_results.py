@@ -1,3 +1,7 @@
+# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>; Paul Best <paul_DOT_best_AT_lis-lab_DOT_fr>
+
+# License: BSD (3-clause)
+
 from vocalseg.utils import butter_bandpass_filter, spectrogram
 
 import numpy as np

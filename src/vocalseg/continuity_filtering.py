@@ -1,3 +1,5 @@
+# Author: Tim Sainburg
+
 from vocalseg.utils import _normalize, spectrogram, norm, plot_spec
 from vocalseg.dynamic_thresholding import dynamic_threshold_segmentation
 

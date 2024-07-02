@@ -1,3 +1,5 @@
+# Author: Tim Sainburg
+
 from tqdm import tqdm
 from vocalseg.utils import _normalize, spectrogram_nn, norm
 import numpy as np

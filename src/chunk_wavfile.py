@@ -1,9 +1,12 @@
+# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>; Paul Best <paul_DOT_best_AT_lis-lab_DOT_fr>
+
+# License: BSD (3-clause)
+
 import argparse
 import librosa
 from scipy.io.wavfile import write
 import pathlib
 import os
-import sys
 import numpy as np
 import glob2
 from tqdm import tqdm
