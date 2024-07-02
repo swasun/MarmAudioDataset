@@ -1,0 +1,17 @@
+{
+    "neighborhood_time_ms": 50,
+    "temporal_neighbor_merge_distance_ms": 100,
+    "min_element_size_ms_hz": [
+        300,
+        125
+    ],
+    "win_length_ms": 4,
+    "min_level_db": -70,
+    "silence_threshold": 0.01,
+    "min_silence_for_spec": 0.01,
+    "max_vocal_for_spec": 5.1,
+    "min_syllable_length_s": 0.01,
+    "neighborhood_thresh": 0.25,
+    "neighborhood_freq_hz": 2000,
+    "overlapping_element_merge_thresh": 0.25
+}
