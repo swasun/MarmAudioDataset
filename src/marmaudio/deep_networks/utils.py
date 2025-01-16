@@ -1,7 +1,3 @@
-# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>; Paul Best <paul_DOT_best_AT_lis-lab_DOT_fr>
-
-# License: BSD (3-clause)
-
 import soundfile as sf
 import torchvision.models as torchmodels
 import torch
@@ -9,13 +5,17 @@ from torch import nn
 from torch.utils import data
 import numpy as np
 from scipy.signal import resample
-
+import os
 
 
 marmoset_labels = ['Twitter', 'Trill', 'Noise', 'Tsik', 'Infant_cry', 'Tsik-Ek',
        'Seep-Ek', 'Scream', 'Seep', 'Ek', 'Phee', 'Trill-Phee']
 typetoidx_marmoset = {k:i for i, k in enumerate(marmoset_labels)}
 idxtotype_marmoset = {typetoidx_marmoset[k]:k for k in typetoidx_marmoset}
+
+macaque_labels = ['Coo', 'Grunt', 'Scream', 'Noise']
+typetoidx_macaque = {k:i for i, k in enumerate(macaque_labels)}
+idxtotype_macaque = {typetoidx_macaque[k]:k for k in typetoidx_macaque}
 
 voc_vs_noise_labels = ['Vocalization', 'Noise']
 typetoidx_voc_vs_noise = {k:i for i, k in enumerate(voc_vs_noise_labels)}
@@ -87,6 +87,8 @@ class Dataset(data.Dataset):
         if self.retType:
             if self.species_name == 'marmoset':
                 return torch.Tensor(norm(sig)).float(), row_name, typetoidx_marmoset[row.type]
+            elif self.species_name == 'macaque':
+                return torch.Tensor(norm(sig)).float(), row_name, typetoidx_macaque[row.type]
             elif self.species_name == 'voc_vs_noise':
                 return torch.Tensor(norm(sig)).float(), row_name, typetoidx_voc_vs_noise[row.type]
             else:
@@ -113,6 +115,62 @@ class Continuous_Dataset(data.Dataset):
             sig = resample(sig, int(len(sig)/fs*self.target_fs))
         return torch.Tensor(norm(sig)).float(), idx * self.sample_dur
 
+class FinalDataset(data.Dataset):
+    def __init__(self, df, audio_path, typetoidx_marmoset, sampleDur=.5, retType=False, brown=False, species_name='marmoset', fs=None):
+        super(FinalDataset, self)
+        self.df, self.audio_path, self.retType, self.brown = df, audio_path, retType, brown
+        self.target_fs = fs if not fs is None else (96000 if species_name == 'marmoset' else 44100)
+        self.sampleDurSec = sampleDur
+        self.sampleDur = int(sampleDur * self.target_fs)
+        self.species_name = species_name
+        self.typetoidx_marmoset = typetoidx_marmoset
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        row_name = os.path.join(row['parent_name'], row['file_name'])
+        sig, fs = sf.read(f'{self.audio_path}/{row_name}', always_2d=True)
+        sig = sig[:,0]
+
+        if fs != self.target_fs:
+            #print('resampling '+str(row_name))
+            sig = resample(sig, int(len(sig)/fs*self.target_fs))
+
+        middle_point = len(sig) // 2
+        ms_samples = int(0.5 * self.target_fs)
+
+        if 2 * middle_point < ms_samples:
+            # The signal is less than 500 ms, so pad it to 500 ms with zeros
+            padding = ms_samples - len(sig)
+            sampled_sig = np.pad(sig, (padding // 2, padding - padding // 2), mode='constant')
+        elif 2 * middle_point == ms_samples:
+            # The signal is exactly 500 ms, so return the whole signal
+            sampled_sig = sig
+        else:
+            # The signal is longer than 500 ms, so take a 500 ms sample from the middle
+            start_index = middle_point - ms_samples // 2
+            end_index = middle_point + ms_samples // 2
+            sampled_sig = sig[start_index:end_index]
+
+        sig = sampled_sig
+
+        if self.brown:
+            brown_std = 10**(-np.random.normal(1,1)/20) # -1 < SNR < 3
+            sig = norm(sig) + norm(np.cumsum(np.random.normal(0, 1, len(sig))))*brown_std
+        if self.retType:
+            if self.species_name == 'marmoset':
+                return torch.Tensor(norm(sig)).float(), row_name, self.typetoidx_marmoset[row.label]
+            elif self.species_name == 'macaque':
+                return torch.Tensor(norm(sig)).float(), row_name, self.typetoidx_macaque[row.label]
+            elif self.species_name == 'voc_vs_noise':
+                return torch.Tensor(norm(sig)).float(), row_name, self.typetoidx_voc_vs_noise[row.label]
+            else:
+                raise ValueError(f'Unsupported species {self.species_name}')
+        else:
+            x = torch.Tensor(norm(sig)).float()
+            return x, row_name
 
 class Flatten(nn.Module):
     def __init__(self):
@@ -158,7 +216,8 @@ class Reshape(nn.Module):
 
 
 def VGG():
-    vgg16 = torchmodels.vgg16(weights=torchmodels.VGG16_Weights.DEFAULT)
+    #vgg16 = torchmodels.vgg16(weights=torchmodels.VGG16_Weights.DEFAULT)
+    vgg16 = torchmodels.vgg16()
     vgg16 = vgg16.features[:13]
     for nm, mod in vgg16.named_modules():
         if isinstance(mod, nn.MaxPool2d):

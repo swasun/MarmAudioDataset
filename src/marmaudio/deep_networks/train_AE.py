@@ -12,7 +12,6 @@ from models import get
 from torch.utils.tensorboard import SummaryWriter
 import argparse
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('audio_folder', type=str, help='Path to the folder with complete audio files')
@@ -22,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument('--sample_duration', type=float, default=0.5)
     parser.add_argument('--dataloader_n_jobs', type=int, default=8)
     parser.add_argument('--device', type=str, default='cuda:0')
-    parser.add_argument('--model_name', type=str, default='AE_marmosset_logMel128_256feat_all-vocs.stdc')
+    parser.add_argument('--model_name', type=str, default='AE_marmoset_logMel128_256feat_all-vocs.stdc')
     parser.add_argument('--frontend', type=str, default='logMel')
     parser.add_argument('--species_name', type=str, default='marmoset')
 
