@@ -1,4 +1,4 @@
-# MarmAudio: A large annotated dataset of the common marmoset vocal repertoire
+# MarmAudio: A large annotated dataset of vocalizations by common marmosets
 
 This repository contains the code used for building MarmAudio, a marmoset vocalization dataset available on Zenodo (1). It includes scripts for data preprocessing, vocalization detection, and classification using a pre-trained deep learning model.
 
