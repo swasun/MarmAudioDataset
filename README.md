@@ -4,6 +4,8 @@ This repository contains the code used for building MarmAudio, a marmoset vocali
 
 MarmAudio, a database of common marmoset vocalizations, which were continuously recorded with a sampling rate of 96 kHz from a stabulation room housing simultaneously ~20 marmosets in three cages. The dataset comprises more than 800,000 files, amounting to 253 hours of data collected over 40 months. Each recording lasts a few seconds and captures the marmosets' social vocalizations, encompassing their entire known vocal repertoire during the experimental period. Around 215,000 calls are annotated with the vocalization type.
 
+The dataset can be downloaded here: https://zenodo.org/records/15017207
+
 ![latent_projection_of_vocalizations](img/latent_projection_of_vocalizations.jpg)
 Legend: For each segmented vocalization, we computed a spectrotemporal representation. Using the trained encoder, we transformed these representations into a 16-dimensional space. From there, we employed the UMAP technique to map the data into latent feature spaces. The colored points denote the predictions where the classifier assigned a high confidence score.
 
@@ -28,8 +30,10 @@ Legend: (1) UMAP embedding panel. Each point is the coordinates in UMAP embeddin
 
 ### Usage:
 
-```
-bokeh serve src/marmaudio/explorer.py
+- Download the dataset
+- Adjust the paths src/marmaudio/explorer.py
+- ```sh
+    bokeh serve src/marmaudio/explorer.py
 ```
 
 ## Pipeline for creating the dataset
