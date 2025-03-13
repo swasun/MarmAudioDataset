@@ -1,4 +1,4 @@
-# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>; Paul Best <paul_DOT_best_AT_lis-lab_DOT_fr>
+# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>; Paul Best <paulobest25_AT_@gmail_DOT_com>
 
 # License: BSD (3-clause)
 
@@ -247,5 +247,5 @@ get = {
   nn.BatchNorm2d(32),
   nn.ReLU(True),
   nn.Conv2d(32, 1, (3, 3), bias=False, padding=1),
-  nn.ReLU(True)),
+  nn.ReLU(True))
 }

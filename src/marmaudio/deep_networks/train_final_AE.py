@@ -1,4 +1,4 @@
-# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>; Paul Best <paul_DOT_best_AT_lis-lab_DOT_fr>
+# Authors: Charly Lamothe <charlylmth_AT_gmail_DOT_com>; Paul Best <paulobest25_AT_@gmail_DOT_com>
 
 # License: BSD (3-clause)
 
@@ -13,10 +13,11 @@ import pandas as pd
 from tqdm import tqdm
 from models import get
 import utils as u
-#from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+from datetime import datetime
 
 
 def show(imgs):
@@ -32,7 +33,7 @@ def show(imgs):
 
 
 """
-python train_final_AE.py /media/charly/9A0CEE3F0CEE1653/Charly/Vocalizations --root_experiment_folder=/media/SSD2/Charly/MarmAudioDataset/experiment_results/final_AE --dataloader_n_jobs=7
+python train_final_AE.py /media/charly/9A0CEE3F0CEE1653/Charly/Vocalizations --root_experiment_folder=/media/SSD2/Charly/MarmAudioDataset/experiment_results --dataloader_n_jobs=7
 """
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -47,8 +48,9 @@ if __name__ == "__main__":
     parser.add_argument('--species_name', type=str, default='marmoset')
     parser.add_argument('--seed', type=int, default=1234)
     args = parser.parse_args()
-    
-    output_folder = os.path.join(args.root_experiment_folder, args.model_name)
+
+    experiment_name = f'{args.model_name}_{datetime.now().strftime("%d-%m-%Y-%H-%M")}'
+    output_folder = os.path.join(args.root_experiment_folder, experiment_name)
     os.makedirs(output_folder, exist_ok=True)
 
     file_paths = glob.glob(os.path.join(args.audio_folder, '*', '*'))
@@ -70,13 +72,13 @@ if __name__ == "__main__":
 
     train_df, test_df = train_test_split(df, test_size=0.2, random_state=args.seed, stratify=df[['label']])
 
-    nepoch = 300
+    nepoch = 100
     batch_size = 32
     nfeat = 256
     device = device(args.device)
     lr = 0.003
     wdL2 = 0.0
-    #writer = SummaryWriter(f'{args.root_experiment_folder}/runs/'+args.model_name)
+    writer = SummaryWriter(f'{args.root_experiment_folder}/{experiment_name}/logs')
     vgg16 = u.VGG()
     vgg16.eval().to(device)
 
@@ -117,21 +119,19 @@ if __name__ == "__main__":
             score = loss_fun(predd, labell)
             score.backward()
             optimizer.step()
-            #writer.add_scalar('train_loss', score.item(), step)
-
-            if step%50==0 :
-                print(score.item())
+            writer.add_scalar('train_loss', score.item(), step)
 
             if step%50==0 :
                 images = [(e-e.min())/(e.max()-e.min()) for e in label[:8]]
                 original_grid = make_grid(images)
-                show(original_grid).savefig(os.path.join(output_folder, f'original_grid_step{step}.png'))
-                #writer.add_image('train_target', grid, step)
-                #writer.add_embedding(x.detach(), global_step=step, label_img=label)
+                #show(original_grid).savefig(os.path.join(output_folder, f'original_grid_step{step}.png'))
+                writer.add_image('train_target', original_grid, step)
+                writer.add_embedding(x.detach(), global_step=step, label_img=label)
                 images = [(e-e.min())/(e.max()-e.min()) for e in pred[:8]]
                 reconstructed_grid = make_grid(images)
-                show(reconstructed_grid).savefig(os.path.join(output_folder, f'reconstructed_grid_step{step}.png'))
-                #writer.add_image('train_reconstruct', grid, step)
+                #show(reconstructed_grid).savefig(os.path.join(output_folder, f'reconstructed_grid_step{step}.png'))
+                writer.add_image('train_reconstruct', reconstructed_grid, step)
+                break
 
             step += 1
 
@@ -148,6 +148,14 @@ if __name__ == "__main__":
                 predd = vgg16(pred.expand(pred.shape[0], 3, *pred.shape[2:]))
                 labell = vgg16(label.expand(label.shape[0], 3, *label.shape[2:]))
 
+                images = [(e-e.min())/(e.max()-e.min()) for e in label[:8]]
+                original_grid = make_grid(images)
+                writer.add_image('test_target', original_grid, step)
+
+                images = [(e-e.min())/(e.max()-e.min()) for e in pred[:8]]
+                reconstructed_grid = make_grid(images)
+                writer.add_image('test_reconstruct', reconstructed_grid, step)
+
                 score = loss_fun(predd, labell)
-                #writer.add_scalar('test_loss', score.item(), step)
+                writer.add_scalar('test_loss', score.item(), step)
         save(model.state_dict(), os.path.join(args.root_experiment_folder, args.model_name))
