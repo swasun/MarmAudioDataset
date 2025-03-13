@@ -49,6 +49,7 @@ def create_mel_filterbank(sample_rate, frame_len, num_bands, min_freq, max_freq,
 
     return filterbank
 
+
 class MelFilter(nn.Module):
     def __init__(self, sample_rate, winsize, num_bands, min_freq, max_freq):
         super(MelFilter, self).__init__()
@@ -82,7 +83,6 @@ class MelFilter(nn.Module):
         return result
 
 class STFT(nn.Module):
-
     def __init__(self, winsize, hopsize, complex=False):
         super(STFT, self).__init__()
         self.winsize = winsize
@@ -124,6 +124,26 @@ class STFT(nn.Module):
         # restore original batchsize and channels in case we mashed them
         x = x.reshape((batchsize, channels, -1) + x.shape[2:]) #if channels > 1 else x.reshape((batchsize, -1) + x.shape[2:])
         return x
+
+
+
+class TemporalBatchNorm(nn.Module):
+    """
+    Batch normalization of a (batch, channels, bands, time) tensor over all but
+    the previous to last dimension (the frequency bands).
+    """
+    def __init__(self, num_bands):
+        super(TemporalBatchNorm, self).__init__()
+        self.bn = nn.BatchNorm1d(num_bands)
+
+    def forward(self, x):
+        shape = x.shape
+        # squash channels into the batch dimension
+        x = x.reshape((-1,) + x.shape[-2:])
+        # pass through 1D batch normalization
+        x = self.bn(x)
+        # restore squashed dimensions
+        return x.reshape(shape)
 
 class Log1p(nn.Module):
     """

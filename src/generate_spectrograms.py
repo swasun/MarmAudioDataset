@@ -2,90 +2,264 @@
 
 # License: BSD (3-clause)
 
-from vocalseg.utils import butter_bandpass_filter, spectrogram
-
+import argparse
 import os
-import json
-from scipy.io import wavfile
+import soundfile as sf
+from vocalseg.utils import spectrogram
+from scipy.signal import butter, lfilter
 import glob2
 from tqdm import tqdm
 import pathlib
 import numpy as np
 from librosa import filters
 import matplotlib.pyplot as plt
+import pandas as pd
+import noisereduce as nr
+import warnings
+from colorspacious import cspace_convert
+import math
+from matplotlib.colors import ListedColormap
+from scipy.ndimage import filters
+from scipy.signal import savgol_filter
+from multiprocessing import Pool
 
 
-def plot_spectrogram(spec, sample_size, parameters, file_path):
-    fig, ax = plt.subplots(figsize=(10, 15))
-    sample_length = sample_size / parameters['sr']
-    ax.imshow(spec, interpolation='nearest', aspect="auto", origin="lower", extent=(0.0, sample_length, 0, parameters['sr'] / 2))
-    yl = np.linspace(0, parameters['sr'] / 2, 5).astype(int).tolist()
-    xl = np.round(np.linspace(0.0, sample_length, 5), 2).tolist()
-    ax.set_xlabel('Time (s)')
-    ax.set(xticks=xl, xticklabels=xl)
-    ax.set_ylabel('Frequency (Hz)')
-    ax.set(yticks=yl, yticklabels=yl)
-    plt.savefig(file_path, bbox_inches='tight', dpi=100)
-    plt.close()
+def gen_spectrogram_cmap():
+    '''
+    J = lightness
+    C = chroma
+    h = hue
+    '''
 
-def preprocess_data(x, sample_size):
-    x = np.asarray(x, dtype="float")
+    # Resolution of colorspace
+    J_RES = 256
+    C_RES = 256
 
-    # If it's too long, truncate it.
-    if x.shape[0] > sample_size:
-        x = x[: sample_size]
+    # NAME = 'So normal'
+    # ANGLE = np.pi * 2 * 0.7
+    # OFFSET = np.pi * 2 * 0.64
+    # CCW = False
+    # SMOOTH = 1/3
 
-    # If it's too short, zero-pad it.
-    start = (sample_size - x.shape[0]) // 2
+    # NAME = 'Wow unique'
+    # ANGLE = np.pi * 2 * 1.0
+    # OFFSET = np.pi * 2 * 0.275
+    # CCW = True
+    # SMOOTH = 1/2
 
-    # Zero fill
-    x_padded = np.zeros(sample_size, dtype=np.float32)
-    x_padded[start : start + x.shape[0]] = x
-    
-    return x_padded
+    # NAME = 'Viridis-like (red bg)'
+    # ANGLE = np.pi * 2 * 1.0
+    # OFFSET = np.pi * 2 * 0.1
+    # CCW = True
+    # SMOOTH = 1/4
 
-destination_root_path = 'results/MarmosetVocalizations_all'
-destination_audio_path = os.path.join(destination_root_path, 'audios')
-destination_spectrogram_path = os.path.join(destination_root_path, 'spectrograms')
-destination_mel_spectrogram_path = os.path.join(destination_root_path, 'mel_spectrograms')
+    # NAME = 'Viridis-like (purple bg)'
+    # ANGLE = np.pi * 2 * 0.9
+    # OFFSET = np.pi * 2 * 0.1
+    # CCW = True
+    # SMOOTH = 1/5
 
-pathlib.Path(destination_spectrogram_path).mkdir(parents=True, exist_ok=True)
-pathlib.Path(destination_mel_spectrogram_path).mkdir(parents=True, exist_ok=True)
+    NAME = 'Audacity proposal'
+    ANGLE = np.pi * 2 * 0.875
+    OFFSET = np.pi * 2 * 0.5
+    CCW = False
+    SMOOTH = 1/3
 
-with open(os.path.join(destination_root_path, 'marmoset_experiment_v21-06-21_parameters.json')) as f:
-    parameters = json.load(f)
+    DESATURATE = 0.9
 
-file_paths = glob2.glob(os.path.join(destination_audio_path, '*.wav'))
-sample_size = 48000
 
-with tqdm(file_paths) as bar:
-    for file_path in bar:
-        basename = os.path.splitext(os.path.basename(file_path))[0]
-        bar.set_description(f'{file_path} - loading')
-        _, data = wavfile.read(file_path)
-        bar.set_description(f'{file_path} - filtering')
-        data = data.astype(np.float32)
-        data = butter_bandpass_filter(data, parameters['lowpass_filter'], (parameters['sr']//2)-1, parameters['sr'], order=2)
-        data = preprocess_data(data, sample_size)
+    # Generate CAM02-UCS(Jp, ap, bp) colorspace
+    j_space = np.linspace(0.1, 99, J_RES)
+    c_space = np.linspace(0, 50, C_RES)
 
-        spec = spectrogram(
-            data,
-            parameters['sr'],
-            n_fft=parameters['n_fft'],
-            hop_length_ms=parameters['hop_length_ms'],
-            win_length_ms=parameters['win_length_ms'],
-            ref_level_db=parameters['ref_level_db'],
-            pre=parameters['pre'],
-            min_level_db=parameters['min_level_db'],
-        ).astype(np.float32)
+    if CCW:
+        h_ = np.linspace(ANGLE+OFFSET, OFFSET, J_RES)
+    else:
+        h_ = np.linspace(OFFSET, ANGLE+OFFSET, J_RES)
 
-        mel_basis = filters.mel(parameters['sr'], parameters['n_fft'], n_mels=64).astype(np.float32)
-        mel_spec = np.dot(mel_basis, spec).astype(np.float32)
+    jpapbp = np.zeros([C_RES, J_RES, 3])
+    for jdx, jp in enumerate(j_space):
+        for cdx, chroma in enumerate(c_space):
+            ap = np.cos(h_[jdx]) * chroma
+            bp = np.sin(h_[jdx]) * chroma
+            jpapbp[cdx, jdx] = (jp, ap, bp)
 
-        plot_spectrogram(spec, sample_size, parameters, f'{basename}_spec.png')
-        plot_spectrogram(mel_spec, sample_size, parameters, f'{basename}_mel_spec.png')
+    # Convert to sRGB
+    rgb = cspace_convert(jpapbp, "CAM02-UCS", "sRGB1")
 
-        np.save(os.path.join(destination_spectrogram_path, f'{basename}.npy'), spec)
-        np.save(os.path.join(destination_mel_spectrogram_path, f'{basename}.npy'), mel_spec)
 
-        bar.update(1)
+    # Get chroma limit of sRGB
+    c_limit = np.zeros_like(j_space)
+    for jdx in range(J_RES):
+        max_cdx = 0
+        for cdx in range(1, C_RES):
+            if np.any(rgb[cdx, jdx] <= 0) or np.any(1 < rgb[cdx, jdx]):
+                max_cdx = cdx - 1
+                break
+            
+        c_limit[jdx] = max_cdx
+
+
+    # Smooth chroma limit contour
+    c_smoothed = np.concatenate([-c_limit[::-1][:-1], c_limit, -c_limit[::-1][1:]])
+
+    c_smoothed = savgol_filter(c_smoothed, math.ceil(J_RES*SMOOTH*1.5/2)*2 - 1, 3)
+    c_smoothed = filters.uniform_filter1d(c_smoothed, int(J_RES*SMOOTH*1.5/2)) * DESATURATE
+
+    c_smoothed = c_smoothed[J_RES:2*J_RES]
+
+    c_selected = c_smoothed.clip(min=0).astype(int)
+
+
+    # Generate and plot gaumt
+    gamut_image = np.copy(rgb)
+    gamut_image[gamut_image<=0] = 1
+    gamut_image[1<gamut_image] = 0
+
+    # Mark smoothed contour on image
+    for jdx, max_c in enumerate(c_selected):
+        if 0 == jdx % 2:
+            gamut_image[max_c, jdx] = 1
+        else:
+            gamut_image[max_c, jdx] = 0
+
+    # Get colors on contour
+    cm_jpapbp = []
+    for jdx, cdx in enumerate(c_smoothed):
+        chroma = cdx * 50 / C_RES
+        jp = j_space[jdx]
+        ap = np.cos(h_[jdx]) * chroma
+        bp = np.sin(h_[jdx]) * chroma
+
+        cm_jpapbp.append([jp, ap, bp])
+
+    cm_rgb = cspace_convert(cm_jpapbp, "CAM02-UCS", "sRGB1")
+    cm_data = np.clip(cm_rgb, 0, 1)
+
+    return ListedColormap(cm_data, name=NAME)
+
+def compute_spectrogram(audio_data):
+    spec = spectrogram(
+        audio_data,
+        96000,
+        n_fft=1024,
+        hop_length_ms=1,
+        win_length_ms=4,
+        ref_level_db=20,
+        pre=0.97,
+        min_level_db=-70,
+    )
+    return spec
+
+def butter_bandpass(lowcut, highcut, fs, order=5):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(order, [low, high], btype="band")
+    return b, a
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    if highcut > int(fs / 2):
+        warnings.warn("Highcut is too high for bandpass filter. Setting to nyquist")
+        highcut = int(fs / 2)
+    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+def raised_cosine(x, mu, s):
+    return 1 / 2 / s * (1 + np.cos((x - mu) / s * math.pi)) * s
+
+def apply_raised_cosine_window(audio, sr, ramps_padding_window_duration):
+    window_len = int(sr * 0.001 * ramps_padding_window_duration)
+    left_raised_cosine_window = raised_cosine(np.arange(window_len), window_len, window_len) # Compute a small positive raised cosine function for left silence
+    right_raised_cosine_window = raised_cosine(np.arange(window_len), 0, window_len) # Compute a small negative raised cosine function for right silence
+    new_audio = audio.copy()
+    new_audio[0:window_len] *= left_raised_cosine_window
+    new_audio[len(new_audio)-window_len:len(new_audio)] *= right_raised_cosine_window
+    return new_audio
+
+def rms_normalize_audio(audio, rms_value=0.01):
+    """
+    RMS normalize an audio segment so that sqrt(mean(x_i**2))==rms_value
+    (per frame normalization on the energy, depending of the sample)
+    Inputs
+    ------
+    audio : numpy array [d]
+    flattened audio signal, mono
+    rms_value : float
+    desired rms value
+    Returns
+    -------
+    norm_audio : numpy array [d]
+    rms normalized audio
+    """
+    assert len(audio.shape)==1, 'Only implmented for mono audio'
+
+    rms_audio = np.sqrt(np.mean(audio**2))
+    norm_audio = (rms_value/rms_audio)*audio
+    return norm_audio
+
+def save_borderless(filepath, dpi=100, fig=None):
+    if not fig:
+        fig = plt.gcf()
+
+    plt.subplots_adjust(0,0,1,1,0,0)
+    for ax in fig.axes:
+        ax.axis('off')
+        ax.margins(0)
+        ax.xaxis.set_major_locator(plt.NullLocator())
+        ax.yaxis.set_major_locator(plt.NullLocator())
+    fig.savefig(filepath, pad_inches = 0, bbox_inches='tight', dpi=dpi, transparent=True)
+    plt.close(fig)
+
+def load_audio_file_and_compute_spectrogram(file_path):
+    sig, fs = sf.read(file_path)
+    sig = butter_bandpass_filter(sig, 200, (fs//2)-1, fs, order=2)
+    sig = nr.reduce_noise(y=sig, sr=fs)
+    sig = apply_raised_cosine_window(sig, sampling_rate, ramps_padding_window_duration=ramps_padding_window_duration)
+    sig /= 1.01 / np.abs(sig).max()
+    sig = rms_normalize_audio(sig)
+
+    return compute_spectrogram(sig)
+
+def compute_spectrogram_job(file_path):
+    basename = os.path.splitext(os.path.basename(file_path))[0]
+    output_file_name = os.path.join(destination_spectrogram_path, f'{basename}.png')
+    if os.path.isfile(output_file_name):
+        return True
+
+    spectrogram = load_audio_file_and_compute_spectrogram(file_path)
+
+    fig, ax = plt.subplots(figsize=(4,3))
+    ax.imshow(spectrogram, interpolation='nearest', aspect="auto", origin="lower", cmap=cmap)
+    save_borderless(output_file_name, fig=fig)
+    plt.close(fig)
+
+    return True
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--encodings_file_path', nargs='?', type=str, required=True)
+    parser.add_argument('--dataset_root_path', nargs='?', type=str, required=True)
+    args = parser.parse_args()
+
+    encodings = np.load(args.encodings_file_path, allow_pickle=True).item()
+    idxs, umap = encodings['idx'], encodings['umap']
+    tsv_file = f"{args.dataset_root_path}/Annotations.tsv"
+    df = pd.read_csv(tsv_file, sep='\t')
+    idxs = [os.path.basename(idx) for idx in idxs]
+    df = df[df['file_name'].isin(idxs)].reset_index(drop=True)
+
+    source_audio_path = os.path.join(args.dataset_root_path, 'Vocalizations')
+    destination_spectrogram_path = os.path.join(args.dataset_root_path, 'spectrograms')
+    pathlib.Path(destination_spectrogram_path).mkdir(parents=True, exist_ok=True)
+
+    file_paths = glob2.glob(os.path.join(source_audio_path, '*', '*.flac'))
+    cmap = gen_spectrogram_cmap()
+    sampling_rate = 96000
+    ramps_padding_window_duration = 60
+
+    with Pool(processes=30) as p, tqdm(total=len(file_paths)) as pbar:
+        for result in p.imap(compute_spectrogram_job, file_paths):
+            pbar.update()
+            pbar.refresh()
