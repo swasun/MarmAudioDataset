@@ -1,1 +1,6 @@
 __pycache__
+Models.zip
+Models/AE_marmoset_logMel128_256feat_all-segmented-vocs_fixrelu_22-01-2025-15-04.stdc
+Models/CLF_resnet50_logMel128_trainsplit_wo_brown_wo_vocs.stdc
+Models/CLF_resnet50_logMel128_trainsplit_wo_brown_wo_vocs_labels_used.tsv
+Models/encodings_AE_marmoset_logMel128_256feat_all-segmented-vocs_fixrelu_22-01-2025-15-04.npy
