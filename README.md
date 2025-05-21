@@ -32,9 +32,7 @@ Legend: (1) UMAP embedding panel. Each point is the coordinates in UMAP embeddin
 
 - Download the dataset
 - Adjust the paths src/marmaudio/explorer.py
-- ```sh
-    bokeh serve src/marmaudio/explorer.py
-```
+- `bokeh serve src/marmaudio/explorer.py`
 
 ## Pipeline for creating the dataset
 
